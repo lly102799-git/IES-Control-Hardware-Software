@@ -301,6 +301,94 @@ async def save_point_tables(payload: ConfigPayload):
         return {"ok": False, "error": str(e)}
 
 
+# ── 数据报表 ────────────────────────────────────────────
+
+from fastapi.responses import Response  # noqa: E402
+from io import StringIO  # noqa: E402
+import csv  # noqa: E402
+
+
+@router.get("/report/export")
+async def export_csv(device_id: str, start: str, end: str, point_name: str = "active_power"):
+    """导出设备遥测数据为 CSV 文件"""
+    try:
+        rows = td_manager.query(f"""
+            SELECT ts, val, quality
+            FROM {device_id}_{point_name}
+            WHERE ts >= '{start}' AND ts <= '{end}'
+            ORDER BY ts
+            LIMIT 50000
+        """)
+    except Exception:
+        rows = []
+
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["timestamp", "value", "quality"])
+    for r in rows:
+        writer.writerow([r.get("ts", ""), r.get("val", ""), r.get("quality", "")])
+
+    csv_content = output.getvalue()
+    filename = f"{device_id}_{point_name}_{start[:10]}_{end[:10]}.csv"
+    return Response(
+        content=csv_content.encode("utf-8-sig"),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/report/daily")
+async def daily_report(device_id: str, date: str):
+    """设备日报：当日汇总统计"""
+    try:
+        rows = td_manager.query(f"""
+            SELECT
+                MIN(val) as min_val, MAX(val) as max_val, AVG(val) as avg_val,
+                SUM(val) as total, COUNT(*) as cnt
+            FROM {device_id}_active_power
+            WHERE ts >= '{date} 00:00:00' AND ts <= '{date} 23:59:59'
+        """)
+        stats = rows[0] if rows else {}
+        # 日发电/用电量 (kWh) — 对功率积分
+        energy = round((stats.get("avg_val", 0) or 0) * 24 / 1000, 2)
+        return {
+            "device_id": device_id, "date": date,
+            "min": round(stats.get("min_val", 0) or 0, 1),
+            "max": round(stats.get("max_val", 0) or 0, 1),
+            "avg": round(stats.get("avg_val", 0) or 0, 1),
+            "energy_kwh": energy,
+            "data_points": stats.get("cnt", 0),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.get("/report/monthly")
+async def monthly_report(device_id: str, year: int, month: int):
+    """设备月报：按日统计"""
+    start = f"{year}-{month:02d}-01"
+    if month == 12:
+        end = f"{year+1}-01-01"
+    else:
+        end = f"{year}-{month+1:02d}-01"
+    try:
+        rows = td_manager.query(f"""
+            SELECT
+                AVG(val) as avg_val, MAX(val) as max_val, COUNT(*) as cnt
+            FROM {device_id}_active_power
+            WHERE ts >= '{start}' AND ts < '{end}'
+        """)
+        stats = rows[0] if rows else {}
+        return {
+            "device_id": device_id, "year": year, "month": month,
+            "avg_power_w": round(stats.get("avg_val", 0) or 0, 1),
+            "max_power_w": round(stats.get("max_val", 0) or 0, 1),
+            "data_points": stats.get("cnt", 0),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ── 驾驶舱 ──────────────────────────────────────────────
 
 

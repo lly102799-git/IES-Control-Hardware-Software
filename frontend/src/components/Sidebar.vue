@@ -25,6 +25,9 @@ const route = useRoute();
       <router-link to="/settings" class="nav-item" :class="{ active: route.path === '/settings' }">
         配置
       </router-link>
+      <router-link to="/reports" class="nav-item" :class="{ active: route.path === '/reports' }">
+        报表
+      </router-link>
     </div>
   </nav>
 </template>
