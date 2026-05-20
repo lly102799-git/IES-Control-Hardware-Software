@@ -32,6 +32,12 @@ class AlertEngine:
     def get_rules(self) -> list[dict]:
         return self.rules
 
+    def save_rules(self, rules: list[dict], path: str = ALERTS_FILE):
+        """保存告警规则到文件并重新加载"""
+        with open(path, "w") as f:
+            json.dump(rules, f, indent=2, ensure_ascii=False)
+        self.load_rules(path)
+
     # ── 状态采集 ──────────────────────────────────────────
 
     def _collect_telemetry(self) -> dict[str, dict]:

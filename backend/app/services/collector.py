@@ -14,76 +14,7 @@ from pymodbus.client import AsyncModbusTcpClient
 
 from ..core.config import settings
 from ..core.tdengine import td_manager
-
-# ── 设备点表定义 (0-based) ─────────────────────────────────
-
-PV_POINTS = [
-    ("dc_voltage",     0, 10.0),
-    ("dc_current",     1, 10.0),
-    ("ac_voltage_a",   2, 10.0),
-    ("ac_current_a",   3, 10.0),
-    ("active_power",   4, 1.0),     # 32bit 地址 4-5
-    ("reactive_power", 6, 1.0),     # 32bit 地址 6-7
-    ("pf",             8, 100.0),
-    ("frequency",      9, 10.0),
-    ("daily_energy",   10, 10.0),
-    ("total_energy",   11, 1.0),    # 32bit 地址 11-12
-    ("temp_module",    13, 10.0),
-    ("temp_cabinet",   14, 10.0),
-    ("status",         15, 1.0),
-]
-
-BATTERY_POINTS = [
-    ("dc_voltage",     0, 10.0),
-    ("dc_current",     1, 10.0),
-    ("ac_voltage_a",   2, 10.0),
-    ("ac_current_a",   3, 10.0),
-    ("active_power",   4, 1.0),     # 32bit 地址 4-5
-    ("reactive_power", 6, 1.0),     # 32bit 地址 6-7
-    ("soc",            8, 10.0),
-    ("soh",            9, 10.0),
-    ("temp_battery",   10, 10.0),
-    ("temp_cabinet",   11, 10.0),
-    ("status",         12, 1.0),
-]
-
-PV_32BIT_ADDRS = {4, 6, 11}
-BATTERY_32BIT_ADDRS = {4, 6}
-
-# CHP (slave=3): 10 regs
-CHP_POINTS = [
-    ("active_power",   0, 1.0, True),   # 32bit
-    ("heat_power",     2, 1.0, True),   # 32bit
-    ("gas_flow",       4, 10.0),
-    ("elec_efficiency", 5, 100.0),
-    ("total_efficiency", 6, 100.0),
-    ("temp_out",       7, 10.0),
-    ("temp_in",        8, 10.0),
-    ("status",         9, 1.0),
-]
-CHP_32BIT = {0, 2}
-
-# Heat Pump (slave=4): 8 regs
-HP_POINTS = [
-    ("elec_power",     0, 1.0, True),   # 32bit
-    ("thermal_power",  2, 1.0, True),   # 32bit
-    ("cop",            4, 10.0),
-    ("temp_out",       5, 10.0),
-    ("temp_in",        6, 10.0),
-    ("mode",           7, 1.0),
-]
-HP_32BIT = {0, 2}
-
-# Thermal Storage (slave=5): 8 regs
-TS_POINTS = [
-    ("heat_stored",    0, 1000.0, True),  # 32bit, reg=Wh, val=kWh
-    ("power",          2, 1.0, True),    # 32bit
-    ("heat_soc",       4, 10.0),
-    ("cool_soc",       5, 10.0),
-    ("tank_temp",      6, 10.0),
-    ("mode",           7, 1.0),
-]
-TS_32BIT = {0, 2}
+from . import point_table
 
 
 def read_reg32(regs: list[int], addr: int) -> int:
@@ -206,115 +137,39 @@ class ModbusCollector:
         ts_ms = int(ts.timestamp() * 1000)
         records = []
 
-        # ── 光伏逆变器 (slave=1), 地址 0-15 ──
-        try:
-            resp = await self.client.read_holding_registers(
-                address=0, count=16, slave=settings.modbus_pv_slave
-            )
-        except Exception as e:
-            print(f"[PV read error] {e}")
-            resp = None
+        # ── 动态轮询所有配置的 Modbus 设备 ──
+        tables = point_table.get_all()
+        for device_id, cfg in tables.items():
+            slave = cfg["slave_id"]
+            start = cfg["read_start"]
+            count = cfg["read_count"]
+            try:
+                resp = await self.client.read_holding_registers(
+                    address=start, count=count, slave=slave
+                )
+            except Exception as e:
+                print(f"[{device_id} read error] {e}")
+                continue
 
-        if resp and not resp.isError():
+            if not resp or resp.isError():
+                continue
+
             regs = resp.registers
-            pv_data = {}
-            for name, addr, scale in PV_POINTS:
-                if addr in PV_32BIT_ADDRS:
-                    raw_val = read_reg32(regs, addr)
-                else:
-                    raw_val = read_reg16(regs, addr, signed=(addr == 1))
-                val = raw_val / scale
-                pv_data[name] = round(val, 3)
+            dev_data: dict[str, float] = {}
+            for pt in cfg.get("points", []):
+                name = pt["name"]
+                addr = pt["register"] - start  # 转换为 regs 列表索引
+                raw_val = read_reg32(regs, addr) if pt.get("is_32bit") else read_reg16(regs, addr, pt.get("is_signed", False))
+                val = raw_val / pt["scale"]
+                dev_data[name] = round(val, 3)
                 records.append({
-                    "device_id": "pv_inverter_01",
+                    "device_id": device_id,
                     "point_name": name,
                     "val": round(val, 3),
                     "quality": 0,
                     "ts": ts_ms,
                 })
-            self._latest["pv_inverter_01"] = pv_data
-
-        # ── 储能 PCS (slave=2), 地址 0-12 ──
-        try:
-            resp = await self.client.read_holding_registers(
-                address=0, count=13, slave=settings.modbus_battery_slave
-            )
-        except Exception as e:
-            print(f"[Battery read error] {e}")
-            resp = None
-
-        if resp and not resp.isError():
-            regs = resp.registers
-            bat_data = {}
-            for name, addr, scale in BATTERY_POINTS:
-                if addr in BATTERY_32BIT_ADDRS:
-                    raw_val = read_reg32(regs, addr)
-                else:
-                    raw_val = read_reg16(regs, addr, signed=(addr == 1))
-                val = raw_val / scale
-                bat_data[name] = round(val, 3)
-                records.append({
-                    "device_id": "battery_pcs_01",
-                    "point_name": name,
-                    "val": round(val, 3),
-                    "quality": 0,
-                    "ts": ts_ms,
-                })
-            self._latest["battery_pcs_01"] = bat_data
-
-        # ── CHP (slave=3), 地址 0-9 ──
-        try:
-            resp = await self.client.read_holding_registers(
-                address=0, count=10, slave=settings.modbus_chp_slave
-            )
-        except Exception as e:
-            print(f"[CHP read error] {e}"); resp = None
-
-        if resp and not resp.isError():
-            regs = resp.registers; data = {}
-            for name, addr, scale, *_ in CHP_POINTS:
-                raw_val = read_reg32(regs, addr) if addr in CHP_32BIT else read_reg16(regs, addr)
-                val = raw_val / scale
-                data[name] = round(val, 3)
-                records.append({"device_id": "chp_01", "point_name": name,
-                                "val": round(val, 3), "quality": 0, "ts": ts_ms})
-            self._latest["chp_01"] = data
-
-        # ── 热泵 (slave=4), 地址 0-7 ──
-        try:
-            resp = await self.client.read_holding_registers(
-                address=0, count=8, slave=settings.modbus_hp_slave
-            )
-        except Exception as e:
-            print(f"[HP read error] {e}"); resp = None
-
-        if resp and not resp.isError():
-            regs = resp.registers; data = {}
-            for name, addr, scale, *_ in HP_POINTS:
-                raw_val = read_reg32(regs, addr) if addr in HP_32BIT else read_reg16(regs, addr)
-                val = raw_val / scale
-                data[name] = round(val, 3)
-                records.append({"device_id": "heatpump_01", "point_name": name,
-                                "val": round(val, 3), "quality": 0, "ts": ts_ms})
-            self._latest["heatpump_01"] = data
-
-        # ── 蓄能罐 (slave=5), 地址 0-7 ──
-        try:
-            resp = await self.client.read_holding_registers(
-                address=0, count=8, slave=settings.modbus_ts_slave
-            )
-        except Exception as e:
-            print(f"[TS read error] {e}"); resp = None
-
-        if resp and not resp.isError():
-            regs = resp.registers; data = {}
-            for name, addr, scale, *_ in TS_POINTS:
-                raw_val = read_reg32(regs, addr) if addr in TS_32BIT else read_reg16(regs, addr)
-                val = raw_val / scale
-                data[name] = round(val, 3)
-                records.append({"device_id": "thermal_storage_01", "point_name": name,
-                                "val": round(val, 3), "quality": 0, "ts": ts_ms})
-            self._latest["thermal_storage_01"] = data
+            self._latest[device_id] = dev_data
 
         # ── 批量写入 TDengine ──
         if records:
@@ -326,6 +181,7 @@ class ModbusCollector:
         return records
 
     async def run_loop(self):
+        point_table.load()
         self._running = True
         interval = settings.collect_interval
         print(f"[Collector] 开始采集, 间隔 {interval}s")

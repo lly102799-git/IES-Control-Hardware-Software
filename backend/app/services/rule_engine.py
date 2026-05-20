@@ -35,6 +35,13 @@ class RuleEngine:
     def get_rules(self) -> list[dict]:
         return self.rules
 
+    def save_rules(self, rules: list[dict], path: str = RULES_FILE):
+        """保存规则到文件并重新加载"""
+        rules.sort(key=lambda r: r.get("priority", 0), reverse=True)
+        with open(path, "w") as f:
+            json.dump(rules, f, indent=2, ensure_ascii=False)
+        self.load_rules(path)
+
     # ── 状态采集 ──────────────────────────────────────────
 
     def collect_state(self) -> dict:

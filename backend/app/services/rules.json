@@ -1,30 +1,29 @@
 [
   {
-    "name": "谷电充电",
-    "description": "00:00-07:00 电价谷段，SOC<90% 时以 0.5C 充电",
-    "priority": 20,
+    "name": "SOC 下限保护",
+    "description": "SOC<15% 时强制停止放电，防止过放",
+    "priority": 99,
     "enabled": true,
-    "cooldown_seconds": 300,
+    "cooldown_seconds": 60,
     "conditions": [
-      {"field": "hour", "op": "between", "min": 0, "max": 7},
-      {"field": "soc", "op": "lt", "value": 90}
+      {
+        "field": "soc",
+        "op": "lt",
+        "value": 15
+      },
+      {
+        "field": "status",
+        "op": "eq",
+        "value": 2
+      }
     ],
     "actions": [
-      {"device": "battery_pcs_01", "mode": 1, "power_setpoint": 25000, "duration": 0}
-    ]
-  },
-  {
-    "name": "上午峰段放电",
-    "description": "09:00-12:00 电价峰段，SOC>30% 时以 0.4C 放电",
-    "priority": 20,
-    "enabled": true,
-    "cooldown_seconds": 300,
-    "conditions": [
-      {"field": "hour", "op": "between", "min": 9, "max": 12},
-      {"field": "soc", "op": "gt", "value": 30}
-    ],
-    "actions": [
-      {"device": "battery_pcs_01", "mode": 2, "power_setpoint": 20000, "duration": 0}
+      {
+        "device": "battery_pcs_01",
+        "mode": 3,
+        "power_setpoint": 0,
+        "duration": 0
+      }
     ]
   },
   {
@@ -34,39 +33,108 @@
     "enabled": true,
     "cooldown_seconds": 300,
     "conditions": [
-      {"field": "hour", "op": "between", "min": 17, "max": 21},
-      {"field": "soc", "op": "gt", "value": 20}
+      {
+        "field": "hour",
+        "op": "between",
+        "min": 17,
+        "max": 21
+      },
+      {
+        "field": "soc",
+        "op": "gt",
+        "value": 20
+      }
     ],
     "actions": [
-      {"device": "battery_pcs_01", "mode": 2, "power_setpoint": 30000, "duration": 0}
-    ]
-  },
-  {
-    "name": "SOC 下限保护",
-    "description": "SOC<15% 时强制停止放电，防止过放",
-    "priority": 100,
-    "enabled": true,
-    "cooldown_seconds": 60,
-    "conditions": [
-      {"field": "soc", "op": "lt", "value": 15},
-      {"field": "status", "op": "eq", "value": 2}
-    ],
-    "actions": [
-      {"device": "battery_pcs_01", "mode": 3, "power_setpoint": 0, "duration": 0}
+      {
+        "device": "battery_pcs_01",
+        "mode": 2,
+        "power_setpoint": 30000,
+        "duration": 0
+      }
     ]
   },
   {
     "name": "SOC 上限保护",
     "description": "SOC>95% 时强制停止充电，防止过充",
-    "priority": 100,
+    "priority": 20,
     "enabled": true,
     "cooldown_seconds": 60,
     "conditions": [
-      {"field": "soc", "op": "gt", "value": 95},
-      {"field": "status", "op": "eq", "value": 1}
+      {
+        "field": "soc",
+        "op": "gt",
+        "value": 95
+      },
+      {
+        "field": "status",
+        "op": "eq",
+        "value": 1
+      }
     ],
     "actions": [
-      {"device": "battery_pcs_01", "mode": 3, "power_setpoint": 0, "duration": 0}
+      {
+        "device": "battery_pcs_01",
+        "mode": 3,
+        "power_setpoint": 0,
+        "duration": 0
+      }
+    ]
+  },
+  {
+    "name": "谷电充电",
+    "description": "00:00-07:00 电价谷段，SOC<90% 时以 0.5C 充电",
+    "priority": 20,
+    "enabled": true,
+    "cooldown_seconds": 300,
+    "conditions": [
+      {
+        "field": "hour",
+        "op": "between",
+        "min": 0,
+        "max": 7
+      },
+      {
+        "field": "soc",
+        "op": "lt",
+        "value": 90
+      }
+    ],
+    "actions": [
+      {
+        "device": "battery_pcs_01",
+        "mode": 1,
+        "power_setpoint": 25000,
+        "duration": 0
+      }
+    ]
+  },
+  {
+    "name": "上午峰段放电",
+    "description": "09:00-12:00 电价峰段，SOC>30% 时以 0.4C 放电",
+    "priority": 20,
+    "enabled": true,
+    "cooldown_seconds": 300,
+    "conditions": [
+      {
+        "field": "hour",
+        "op": "between",
+        "min": 9,
+        "max": 12
+      },
+      {
+        "field": "soc",
+        "op": "gt",
+        "value": 30
+      }
+    ],
+    "actions": [
+      {
+        "device": "battery_pcs_01",
+        "mode": 2,
+        "power_setpoint": 20000,
+        "duration": 0
+      }
     ]
   },
   {
@@ -76,13 +144,35 @@
     "enabled": false,
     "cooldown_seconds": 600,
     "conditions": [
-      {"field": "hour", "op": "between", "min": 10, "max": 15},
-      {"field": "pv_power", "op": "gt", "value": 50000},
-      {"field": "soc", "op": "lt", "value": 80},
-      {"field": "battery_status", "op": "neq", "value": 1}
+      {
+        "field": "hour",
+        "op": "between",
+        "min": 10,
+        "max": 15
+      },
+      {
+        "field": "pv_power",
+        "op": "gt",
+        "value": 50000
+      },
+      {
+        "field": "soc",
+        "op": "lt",
+        "value": 80
+      },
+      {
+        "field": "battery_status",
+        "op": "neq",
+        "value": 1
+      }
     ],
     "actions": [
-      {"device": "battery_pcs_01", "mode": 1, "power_setpoint": 30000, "duration": 7200}
+      {
+        "device": "battery_pcs_01",
+        "mode": 1,
+        "power_setpoint": 30000,
+        "duration": 7200
+      }
     ]
   },
   {
@@ -92,12 +182,32 @@
     "enabled": true,
     "cooldown_seconds": 600,
     "conditions": [
-      {"field": "hour", "op": "not_between", "min": 0, "max": 7},
-      {"field": "hour", "op": "not_between", "min": 9, "max": 12},
-      {"field": "hour", "op": "not_between", "min": 17, "max": 21}
+      {
+        "field": "hour",
+        "op": "not_between",
+        "min": 0,
+        "max": 7
+      },
+      {
+        "field": "hour",
+        "op": "not_between",
+        "min": 9,
+        "max": 12
+      },
+      {
+        "field": "hour",
+        "op": "not_between",
+        "min": 17,
+        "max": 21
+      }
     ],
     "actions": [
-      {"device": "battery_pcs_01", "mode": 0, "power_setpoint": 0, "duration": 0}
+      {
+        "device": "battery_pcs_01",
+        "mode": 0,
+        "power_setpoint": 0,
+        "duration": 0
+      }
     ]
   }
 ]

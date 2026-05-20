@@ -1,0 +1,81 @@
+{
+  "pv_inverter_01": {
+    "slave_id": 1,
+    "read_start": 0,
+    "read_count": 16,
+    "points": [
+      {"name": "dc_voltage",     "register": 0,  "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "dc_current",     "register": 1,  "scale": 10.0,  "is_32bit": false, "is_signed": true},
+      {"name": "ac_voltage_a",   "register": 2,  "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "ac_current_a",   "register": 3,  "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "active_power",   "register": 4,  "scale": 1.0,   "is_32bit": true,  "is_signed": false},
+      {"name": "reactive_power", "register": 6,  "scale": 1.0,   "is_32bit": true,  "is_signed": false},
+      {"name": "pf",             "register": 8,  "scale": 100.0, "is_32bit": false, "is_signed": false},
+      {"name": "frequency",      "register": 9,  "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "daily_energy",   "register": 10, "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "total_energy",   "register": 11, "scale": 1.0,   "is_32bit": true,  "is_signed": false},
+      {"name": "temp_module",    "register": 13, "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "temp_cabinet",   "register": 14, "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "status",         "register": 15, "scale": 1.0,   "is_32bit": false, "is_signed": false}
+    ]
+  },
+  "battery_pcs_01": {
+    "slave_id": 2,
+    "read_start": 0,
+    "read_count": 13,
+    "points": [
+      {"name": "dc_voltage",     "register": 0,  "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "dc_current",     "register": 1,  "scale": 10.0,  "is_32bit": false, "is_signed": true},
+      {"name": "ac_voltage_a",   "register": 2,  "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "ac_current_a",   "register": 3,  "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "active_power",   "register": 4,  "scale": 1.0,   "is_32bit": true,  "is_signed": true},
+      {"name": "reactive_power", "register": 6,  "scale": 1.0,   "is_32bit": true,  "is_signed": false},
+      {"name": "soc",            "register": 8,  "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "soh",            "register": 9,  "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "temp_battery",   "register": 10, "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "temp_cabinet",   "register": 11, "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "status",         "register": 12, "scale": 1.0,   "is_32bit": false, "is_signed": false}
+    ]
+  },
+  "chp_01": {
+    "slave_id": 3,
+    "read_start": 0,
+    "read_count": 10,
+    "points": [
+      {"name": "active_power",    "register": 0, "scale": 1.0,  "is_32bit": true,  "is_signed": false},
+      {"name": "heat_power",      "register": 2, "scale": 1.0,  "is_32bit": true,  "is_signed": false},
+      {"name": "gas_flow",        "register": 4, "scale": 10.0, "is_32bit": false, "is_signed": false},
+      {"name": "elec_efficiency", "register": 5, "scale": 100.0,"is_32bit": false, "is_signed": false},
+      {"name": "total_efficiency","register": 6, "scale": 100.0,"is_32bit": false, "is_signed": false},
+      {"name": "temp_out",        "register": 7, "scale": 10.0, "is_32bit": false, "is_signed": false},
+      {"name": "temp_in",         "register": 8, "scale": 10.0, "is_32bit": false, "is_signed": false},
+      {"name": "status",          "register": 9, "scale": 1.0,  "is_32bit": false, "is_signed": false}
+    ]
+  },
+  "heatpump_01": {
+    "slave_id": 4,
+    "read_start": 0,
+    "read_count": 8,
+    "points": [
+      {"name": "elec_power",    "register": 0, "scale": 1.0,  "is_32bit": true,  "is_signed": false},
+      {"name": "thermal_power", "register": 2, "scale": 1.0,  "is_32bit": true,  "is_signed": false},
+      {"name": "cop",           "register": 4, "scale": 10.0, "is_32bit": false, "is_signed": false},
+      {"name": "temp_out",      "register": 5, "scale": 10.0, "is_32bit": false, "is_signed": false},
+      {"name": "temp_in",       "register": 6, "scale": 10.0, "is_32bit": false, "is_signed": false},
+      {"name": "mode",          "register": 7, "scale": 1.0,  "is_32bit": false, "is_signed": false}
+    ]
+  },
+  "thermal_storage_01": {
+    "slave_id": 5,
+    "read_start": 0,
+    "read_count": 8,
+    "points": [
+      {"name": "heat_stored", "register": 0, "scale": 1000.0,"is_32bit": true,  "is_signed": false},
+      {"name": "power",       "register": 2, "scale": 1.0,   "is_32bit": true,  "is_signed": true},
+      {"name": "heat_soc",    "register": 4, "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "cool_soc",    "register": 5, "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "tank_temp",   "register": 6, "scale": 10.0,  "is_32bit": false, "is_signed": false},
+      {"name": "mode",        "register": 7, "scale": 1.0,   "is_32bit": false, "is_signed": false}
+    ]
+  }
+}

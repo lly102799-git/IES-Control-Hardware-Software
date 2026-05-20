@@ -231,6 +231,76 @@ async def trigger_forecast():
     return result
 
 
+# ── 配置管理 ────────────────────────────────────────────
+
+from pydantic import BaseModel as PbModel  # noqa: E402
+
+
+class ConfigPayload(PbModel):
+    items: list[dict]
+
+
+@router.get("/config/rules")
+async def get_config_rules():
+    """获取规则引擎当前配置"""
+    return {"items": rule_engine.get_rules()}
+
+
+@router.put("/config/rules")
+async def save_config_rules(payload: ConfigPayload):
+    """保存规则配置到文件并热加载"""
+    try:
+        rule_engine.save_rules(payload.items)
+        return {"ok": True, "count": len(payload.items)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@router.get("/config/alerts")
+async def get_config_alerts():
+    """获取告警引擎当前配置"""
+    return {"items": alert_engine.get_rules()}
+
+
+@router.put("/config/alerts")
+async def save_config_alerts(payload: ConfigPayload):
+    """保存告警配置到文件并热加载"""
+    try:
+        alert_engine.save_rules(payload.items)
+        return {"ok": True, "count": len(payload.items)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ── 设备点表配置 ────────────────────────────────────────
+
+from ..services import point_table  # noqa: E402
+
+
+@router.get("/config/point-tables")
+async def get_point_tables():
+    """获取所有设备的点表配置"""
+    return {"devices": point_table.get_all()}
+
+
+@router.put("/config/point-tables")
+async def save_point_tables(payload: ConfigPayload):
+    """保存点表配置到文件"""
+    try:
+        tables = {}
+        for item in payload.items:
+            tables[item["device_id"]] = {
+                "slave_id": item["slave_id"],
+                "read_start": item["read_start"],
+                "read_count": item["read_count"],
+                "points": item["points"],
+            }
+        point_table.save(tables)
+        return {"ok": True, "count": len(tables)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 # ── 驾驶舱 ──────────────────────────────────────────────
 
 
