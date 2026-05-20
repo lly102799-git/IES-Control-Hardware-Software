@@ -1,0 +1,72 @@
+[
+  {
+    "name": "储能 SOC 过低",
+    "severity": "critical",
+    "device_id": "battery_pcs_01",
+    "point": "soc",
+    "op": "lt",
+    "threshold": 15,
+    "cooldown_seconds": 600,
+    "message": "储能电池 SOC 低于 {value}%，存在过放风险"
+  },
+  {
+    "name": "储能 SOC 过高",
+    "severity": "warning",
+    "device_id": "battery_pcs_01",
+    "point": "soc",
+    "op": "gt",
+    "threshold": 95,
+    "cooldown_seconds": 600,
+    "message": "储能电池 SOC 达到 {value}%，接近满充"
+  },
+  {
+    "name": "电池温度过高",
+    "severity": "critical",
+    "device_id": "battery_pcs_01",
+    "point": "temp_battery",
+    "op": "gt",
+    "threshold": 45,
+    "cooldown_seconds": 300,
+    "message": "电池温度 {value}°C，超过 45°C 安全阈值"
+  },
+  {
+    "name": "光伏逆变器故障",
+    "severity": "critical",
+    "device_id": "pv_inverter_01",
+    "point": "status",
+    "op": "eq",
+    "threshold": 2,
+    "cooldown_seconds": 300,
+    "message": "光伏逆变器状态异常 (status={value})，需立即检查"
+  },
+  {
+    "name": "储能 PCS 故障",
+    "severity": "critical",
+    "device_id": "battery_pcs_01",
+    "point": "status",
+    "op": "eq",
+    "threshold": 3,
+    "cooldown_seconds": 300,
+    "message": "储能 PCS 状态异常 (status={value})，需立即检查"
+  },
+  {
+    "name": "光伏组件温度过高",
+    "severity": "warning",
+    "device_id": "pv_inverter_01",
+    "point": "temp_module",
+    "op": "gt",
+    "threshold": 70,
+    "cooldown_seconds": 600,
+    "message": "光伏组件温度 {value}°C，超过 70°C，散热需关注"
+  },
+  {
+    "name": "通信中断",
+    "severity": "critical",
+    "device_id": "*",
+    "point": "_comm_loss",
+    "op": "eq",
+    "threshold": 1,
+    "cooldown_seconds": 120,
+    "message": "设备通信中断，数据采集异常"
+  }
+]

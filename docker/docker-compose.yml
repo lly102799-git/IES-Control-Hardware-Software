@@ -1,0 +1,34 @@
+services:
+  tdengine:
+    image: tdengine/tdengine:3.3.3.0
+    container_name: ies-tdengine
+    hostname: tdengine
+    restart: unless-stopped
+    environment:
+      TAOS_FQDN: tdengine
+    ports:
+      - "6030:6030"   # REST API
+      - "6041:6041"   # WebSocket
+      - "6030-6035:6030-6035/udp"
+    volumes:
+      - tdengine-data:/var/lib/taos
+      - tdengine-log:/var/log/taos
+    healthcheck:
+      test: ["CMD", "taos", "-s", "show dnodes"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: ies-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # MQTT
+      - "9001:9001"   # WebSocket MQTT
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+volumes:
+  tdengine-data:
+  tdengine-log:
