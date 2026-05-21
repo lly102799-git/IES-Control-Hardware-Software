@@ -27,24 +27,53 @@ const props = defineProps<{ id: string }>();
 const router = useRouter();
 import { API_BASE } from "../config";
 
+// ── 各设备类型对应的遥测字段 ──────────────────────────
+const POINT_LABELS: Record<string, string> = {
+  active_power: "有功功率", reactive_power: "无功功率",
+  dc_voltage: "DC 电压", dc_current: "DC 电流",
+  ac_voltage_a: "AC 电压", ac_current_a: "AC 电流",
+  pf: "功率因数", frequency: "频率",
+  daily_energy: "日发电量", total_energy: "总发电量",
+  temp_module: "组件温度", temp_cabinet: "机柜温度",
+  soc: "SOC", soh: "SOH", temp_battery: "电池温度",
+  heat_power: "热功率", gas_flow: "燃气流量",
+  elec_efficiency: "发电效率", total_efficiency: "总效率",
+  temp_out: "出水温度", temp_in: "进水温度",
+  elec_power: "耗电功率", thermal_power: "制热功率",
+  cop: "COP", mode: "运行模式",
+  heat_stored: "蓄热量", power: "功率",
+  heat_soc: "热 SOC", cool_soc: "冷 SOC", tank_temp: "罐温",
+  voltage: "电压", current: "电流", power_factor: "功率因数",
+  temperature: "温度", humidity: "湿度", co2: "CO₂", pm25: "PM2.5",
+  temp_supply: "供水温度", temp_return: "回水温度", flow_rate: "流量",
+  status: "运行状态",
+};
+
+const DEVICE_POINTS: Record<string, string[]> = {
+  pv_inverter_01:    ["active_power","dc_voltage","dc_current","ac_voltage_a","ac_current_a","reactive_power","pf","frequency","daily_energy","total_energy","temp_module","temp_cabinet","status"],
+  battery_pcs_01:    ["active_power","dc_voltage","dc_current","ac_voltage_a","ac_current_a","reactive_power","soc","soh","temp_battery","temp_cabinet","status"],
+  chp_01:            ["active_power","heat_power","gas_flow","elec_efficiency","total_efficiency","temp_out","temp_in","status"],
+  heatpump_01:       ["elec_power","thermal_power","cop","temp_out","temp_in","mode"],
+  thermal_storage_01:["power","heat_stored","heat_soc","cool_soc","tank_temp","mode"],
+  smart_meter_01:    ["active_power","voltage","current","power_factor","frequency","total_energy"],
+  env_sensor_01:     ["temperature","humidity","co2","pm25"],
+  pipe_sensor_01:    ["temp_supply","temp_return","flow_rate"],
+};
+
+const DEVICE_NAMES: Record<string, string> = {
+  pv_inverter_01: "光伏逆变器 #1", battery_pcs_01: "储能变流器 #1",
+  chp_01: "CHP 三联供 #1", heatpump_01: "热泵 #1",
+  thermal_storage_01: "蓄能罐 #1", smart_meter_01: "智能电表 #1",
+  env_sensor_01: "环境传感器 #1", pipe_sensor_01: "管道传感器 #1",
+};
+
 const loading = ref(false);
-const pointName = ref("active_power");
+const pointOptions = DEVICE_POINTS[props.id]?.map((v) => ({
+  label: POINT_LABELS[v] || v, value: v,
+})) || [];
+const pointName = ref(pointOptions[0]?.value || "");
 const historyData = ref<{ ts: string; val: number }[]>([]);
-
-const pointOptions = [
-  { label: "有功功率", value: "active_power" },
-  { label: "DC 电压", value: "dc_voltage" },
-  { label: "DC 电流", value: "dc_current" },
-  { label: "AC 电压", value: "ac_voltage_a" },
-  { label: "AC 电流", value: "ac_current_a" },
-  ...(props.id === "battery_pcs_01"
-    ? [{ label: "SOC", value: "soc" }]
-    : [{ label: "组件温度", value: "temp_module" }]),
-];
-
-const deviceName = computed(() =>
-  props.id === "pv_inverter_01" ? "光伏逆变器 #1" : "储能变流器 #1"
-);
+const deviceName = DEVICE_NAMES[props.id] || props.id;
 
 async function fetchHistory() {
   loading.value = true;
