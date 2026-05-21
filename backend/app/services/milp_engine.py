@@ -51,8 +51,27 @@ class EventDetector:
         self._last_pv_power: float = 0.0
         self._last_load: float = 0.0
         self._last_price_period: str = ""
-        self._event_cooldown: dict[str, float] = {}  # event_name → last fire time
-        self._min_cooldown: float = 120  # 同类型事件最小间隔 (秒)
+        self._event_cooldown: dict[str, float] = {}
+        self._min_cooldown: float = 60   # 缩短冷却期，避免连续扰动被过滤
+        # 连续扰动追踪 — 短时间窗口内多个事件强制触发
+        self._recent_events: list[str] = []
+        self._recent_events_ts: float = 0
+        # SOC 轨迹追踪
+        self._planned_soc_bat: list[float] = []
+        self._planned_soc_ts: list[float] = []
+        self._soc_step: int = 0            # 上次调度以来的步数
+        self._soc_deviation_count: int = 0  # 连续偏离计数
+
+    def update_plan(self, schedule: list[dict] | None):
+        """记录 MILP 的 SOC 计划轨迹，用于后续偏离检测。"""
+        if schedule:
+            self._planned_soc_bat = [s.get("SOC_bat", 0.5) for s in schedule[:12]]
+            self._planned_soc_ts = [s.get("SOC_ts", 0.4) for s in schedule[:12]]
+        else:
+            self._planned_soc_bat = []
+            self._planned_soc_ts = []
+        self._soc_step = 0
+        self._soc_deviation_count = 0
 
     # ── 设备级事件 ──────────────────────────────────────────
 
@@ -160,6 +179,37 @@ class EventDetector:
 
         return events
 
+    # ── 负荷偏差事件 ──────────────────────────────────────
+
+    def _check_load_deviation(self, current_all: dict[str, dict],
+                              schedule: list[dict] | None) -> list[str]:
+        """检测实际负荷与预测负荷的偏差。"""
+        events = []
+        meter = current_all.get("smart_meter_01", {})
+        actual_load = abs(meter.get("active_power", 0)) / 1000  # kW
+
+        if schedule and len(schedule) > 0 and actual_load > 5:
+            expected = schedule[0].get("P_grid_import_kw", 0) \
+                     + schedule[0].get("P_chp_kw", 0) \
+                     + schedule[0].get("P_pv_kw", 0) \
+                     + schedule[0].get("P_bat_dis_kw", 0) \
+                     - schedule[0].get("P_grid_export_kw", 0) \
+                     - schedule[0].get("P_bat_ch_kw", 0) \
+                     - schedule[0].get("P_hp_kw", 0)
+            if expected > 0:
+                deviation = abs(actual_load - expected) / expected
+                if deviation > 0.25:
+                    events.append(f"load_deviation:{deviation:.0%}")
+
+        # 累计变化检测
+        if self._last_load > 0 and actual_load > 5:
+            delta = abs(actual_load - self._last_load)
+            if delta > 15:  # 15kW 突变
+                events.append(f"load_spike:{delta:.0f}kW")
+
+        self._last_load = actual_load
+        return events
+
     # ── 系统级事件 ──────────────────────────────────────────
 
     def _check_system(self, current_all: dict[str, dict],
@@ -214,6 +264,21 @@ class EventDetector:
         if chp_pwr > 10 and total_heat < 20:
             events.append("thermal_gap")
 
+        # 6. SOC 轨迹偏离 — 实际 SOC 偏离计划 >10%
+        self._soc_step += 1
+        plan_idx = min(self._soc_step, len(self._planned_soc_bat) - 1)
+        if self._planned_soc_bat and plan_idx < len(self._planned_soc_bat):
+            soc_bat_planned = self._planned_soc_bat[plan_idx]
+            soc_bat_actual = bat_soc
+            if abs(soc_bat_actual - soc_bat_planned) > 0.10:
+                self._soc_deviation_count += 1
+            else:
+                self._soc_deviation_count = max(0, self._soc_deviation_count - 1)
+            # 连续 3 次检测到偏离 → 触发事件
+            if self._soc_deviation_count >= 3:
+                events.append(
+                    f"soc_trajectory:bat={soc_bat_actual:.2f}vs{soc_bat_planned:.2f}")
+
         self._last_load = meter_pwr
         return events
 
@@ -228,28 +293,42 @@ class EventDetector:
         events: list[str] = []
 
         # 设备级检测
+        # _check_pv 需要 schedule 参数 (对比预测值)，其它 checker 不需要
+        if "pv_inverter_01" in current:
+            events.extend(self._check_pv(current["pv_inverter_01"], schedule))
         for dev_id, checker in [
-            ("pv_inverter_01", self._check_pv),
             ("battery_pcs_01", self._check_battery),
             ("chp_01", self._check_chp),
             ("heatpump_01", self._check_heatpump),
             ("thermal_storage_01", self._check_thermal_storage),
         ]:
             if dev_id in current:
-                dev_events = checker(current[dev_id])
-                events.extend(dev_events)
+                events.extend(checker(current[dev_id]))
+
+        # 负荷偏差检测 (需要 smart_meter 数据)
+        if "smart_meter_01" in current:
+            events.extend(self._check_load_deviation(current, schedule))
 
         # 系统级检测
         sys_events = self._check_system(current, schedule)
         events.extend(sys_events)
 
-        # 冷却期过滤
+        # 冷却期过滤 — 按事件类型，但同窗口内的异类事件不互斥
         now = time.time()
         filtered: list[str] = []
+        distinct_types = {evt.split(":")[0] for evt in events}
+
+        # 连续扰动检测：5min 内有 ≥3 种不同类型事件 → 强制全部放行
+        if now - self._recent_events_ts > 300:
+            self._recent_events = []
+            self._recent_events_ts = now
+        self._recent_events.extend(distinct_types)
+        force_all = len(set(self._recent_events)) >= 3
+
         for evt in events:
-            category = evt.split(":")[0]  # 按事件类别冷却
+            category = evt.split(":")[0]
             last = self._event_cooldown.get(category, 0)
-            if now - last >= self._min_cooldown:
+            if force_all or now - last >= self._min_cooldown:
                 filtered.append(evt)
                 self._event_cooldown[category] = now
 
@@ -267,6 +346,21 @@ class EventDetector:
 # ═══════════════════════════════════════════════════════════════
 # 辅助函数
 # ═══════════════════════════════════════════════════════════════
+
+def _to_ts(val) -> int:
+    """将 TDengine 返回值转为毫秒时间戳。兼容 str/datetime/int。"""
+    if val is None:
+        return 0
+    if isinstance(val, (int, float)):
+        return int(val)
+    s = str(val)
+    # ISO 格式: "2026-05-21T14:30:00" 或 "2026-05-21T14:30:00.123Z"
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00").replace(" ", "T"))
+        return int(dt.timestamp() * 1000)
+    except ValueError:
+        return 0
+
 
 def _load_price_config() -> dict:
     with open(PRICE_FILE) as f:
@@ -556,6 +650,7 @@ class MilpOptimizer:
             self._last_solve_status = status
             self._last_solve_cost = round(total_cost, 2)
             self._last_solve_ts = datetime.now().isoformat()
+            self.detector.update_plan(schedule)  # 同步 SOC 轨迹基准
 
             # 记录第一步功率用于下次爬坡约束
             s0 = schedule[0]
@@ -693,7 +788,7 @@ class MilpOptimizer:
                 WHERE ts >= {start_ms} AND ts <= {end_ms} ORDER BY ts
             """)
             for row in rows:
-                t_ms = row.get("ts", 0)
+                t_ms = _to_ts(row.get("ts", 0))
                 step = int((t_ms - start_ms) / step_ms)
                 if 0 <= step < T:
                     pv_forecast[step] = max(0.0, float(row.get("power_kw", 0)))
@@ -706,7 +801,7 @@ class MilpOptimizer:
                 WHERE ts >= {start_ms} AND ts <= {end_ms} ORDER BY ts
             """)
             for row in rows:
-                t_ms = row.get("ts", 0)
+                t_ms = _to_ts(row.get("ts", 0))
                 step = int((t_ms - start_ms) / step_ms)
                 if 0 <= step < T:
                     load_forecast[step] = max(0.0, float(row.get("power_kw", 0)))
