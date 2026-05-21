@@ -123,11 +123,20 @@ async def get_system_status():
 
 @router.post("/devices/{device_id}/command")
 async def send_command(device_id: str, cmd: DeviceCommand):
-    """向设备下发控制指令"""
+    """向设备下发控制指令。
+    手动指令 (mode != 0) 会注册为 MILP 手动覆盖，优先级高于自动优化。
+    自动模式 (mode == 0) 会清除覆盖，恢复 MILP 控制。
+    """
     result = await collector.write_device_command(
         device_id,
         {"register": cmd.addr, "values": cmd.values, "mode": cmd.mode, "duration": cmd.duration},
     )
+    # 注册/清除 MILP 手动覆盖
+    from ..services.milp_engine import milp_engine
+    if cmd.mode == 0:
+        milp_engine.clear_manual_override(device_id)
+    elif result.get("success"):
+        milp_engine.set_manual_override(device_id, cmd.duration)
     return result
 
 
@@ -602,6 +611,20 @@ async def update_milp_config(config: MilpPriceConfig):
     """更新价格配置（热加载）"""
     milp_engine.update_price_config(config.model_dump())
     return {"ok": True}
+
+
+@router.get("/milp/overrides")
+async def get_milp_overrides():
+    """当前活跃的手动覆盖设备及剩余时间"""
+    return milp_engine.get_manual_overrides()
+
+
+@router.get("/milp/execution-log")
+async def get_execution_log(minutes: int = 40):
+    """MILP 执行日志: 过去 N 分钟的 setpoint + 实际遥测。
+    用于前端绘制「过去执行 vs 未来计划」对比图。
+    """
+    return milp_engine.get_execution_log(minutes)
 
 
 # ── WebSocket 端点 ────────────────────────────────────────

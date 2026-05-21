@@ -415,8 +415,28 @@ class MilpOptimizer:
         self._last_solve_cost: float = 0.0
         self._last_solve_ts: str = ""
         self._running = False
-        self._prev_power: dict[str, float] = {}  # 上一指令的设备功率 (用于爬坡约束初始值)
+        # 执行日志 — 记录每次下发的指令，用于与实际遥测对比
+        self._execution_log: list[dict] = []  # [{ts, battery_kw, chp_kw, hp_kw, ts_kw, grid_imp_kw, grid_exp_kw, pv_kw}, ...]
+        self._prev_power: dict[str, float] = {}
         self.detector = EventDetector()
+        # 手动控制覆盖 — 手动指令优先级高于 MILP
+        self._manual_override: dict[str, float] = {}  # device_id → expiry timestamp
+
+    def set_manual_override(self, device_id: str, duration_seconds: int):
+        """注册手动控制覆盖，MILP 在过期前不会向该设备下发指令。"""
+        expiry = time.time() + duration_seconds if duration_seconds > 0 else float("inf")
+        self._manual_override[device_id] = expiry
+        print(f"[MILP] 手动覆盖: {device_id}, 过期: {duration_seconds}s")
+
+    def clear_manual_override(self, device_id: str):
+        """清除手动覆盖，恢复 MILP 自动控制。"""
+        self._manual_override.pop(device_id, None)
+        print(f"[MILP] 手动覆盖已清除: {device_id}")
+
+    def get_manual_overrides(self) -> dict[str, float]:
+        """返回当前活跃的手动覆盖。"""
+        now = time.time()
+        return {k: max(0, v - now) for k, v in self._manual_override.items() if v > now}
 
     # ── 模型构建 ──────────────────────────────────────────
 
@@ -685,6 +705,24 @@ class MilpOptimizer:
         if schedule is None or len(schedule) == 0:
             return []
 
+        # 跳过手动覆盖的设备 (手动控制优先级高于 MILP)
+        overrides = self.get_manual_overrides()
+        skip_devices = set(overrides.keys())
+
+        # 记录本次下发的 setpoint (用于前端执行对比)
+        s0 = schedule[0]
+        self._log_execution({
+            "ts": datetime.now().isoformat(),
+            "battery_kw": s0.get("P_bat_dis_kw", 0) - s0.get("P_bat_ch_kw", 0),
+            "chp_kw": s0.get("P_chp_kw", 0),
+            "hp_kw": s0.get("P_hp_kw", 0),
+            "ts_kw": s0.get("Q_ts_dis_kw", 0) - s0.get("Q_ts_ch_kw", 0),
+            "grid_net_kw": s0.get("P_grid_import_kw", 0) - s0.get("P_grid_export_kw", 0),
+            "pv_kw": s0.get("P_pv_kw", 0),
+            "soc_bat": s0.get("SOC_bat", 0),
+            "soc_ts": s0.get("SOC_ts", 0),
+        }, skip_devices)
+
         commands: list[dict] = []
         threshold = 1.0
 
@@ -692,79 +730,94 @@ class MilpOptimizer:
             s = schedule[offset]
             suffix = f"_{offset}" if num_steps > 1 else ""
 
-            # 储能变流器
-            bat_ch = s.get("P_bat_ch_kw", 0)
-            bat_dis = s.get("P_bat_dis_kw", 0)
-            if bat_dis > threshold:
-                commands.append({
-                    "device_id": "battery_pcs_01",
-                    "command": {"register": 50, "values": [bat_dis],
-                                "mode": 2, "duration": duration},
-                })
-            elif bat_ch > threshold:
-                commands.append({
-                    "device_id": "battery_pcs_01",
-                    "command": {"register": 50, "values": [bat_ch],
-                                "mode": 1, "duration": duration},
-                })
-            else:
-                commands.append({
-                    "device_id": "battery_pcs_01",
-                    "command": {"register": 50, "values": [0],
-                                "mode": 3, "duration": 0},
-                })
+            # 储能变流器 (跳过手动覆盖)
+            # 注意: MILP 模型使用 kW, Modbus 寄存器期望 W → 需要 ×1000
+            KW = 1000
+            if "battery_pcs_01" not in skip_devices:
+                bat_ch = s.get("P_bat_ch_kw", 0) * KW
+                bat_dis = s.get("P_bat_dis_kw", 0) * KW
+                if bat_dis > threshold * KW:
+                    commands.append({
+                        "device_id": "battery_pcs_01",
+                        "command": {"register": 50, "values": [bat_dis],
+                                    "mode": 2, "duration": duration},
+                    })
+                elif bat_ch > threshold * KW:
+                    commands.append({
+                        "device_id": "battery_pcs_01",
+                        "command": {"register": 50, "values": [bat_ch],
+                                    "mode": 1, "duration": duration},
+                    })
+                else:
+                    commands.append({
+                        "device_id": "battery_pcs_01",
+                        "command": {"register": 50, "values": [0],
+                                    "mode": 3, "duration": 0},
+                    })
 
             # CHP
-            chp_pwr = s.get("P_chp_kw", 0)
-            if s.get("u_chp", 0) == 1 and chp_pwr > threshold:
-                commands.append({
-                    "device_id": "chp_01",
-                    "command": {"register": 50, "values": [chp_pwr],
-                                "mode": 1, "duration": duration},
-                })
-            else:
-                commands.append({
-                    "device_id": "chp_01",
-                    "command": {"register": 50, "values": [0],
-                                "mode": 0, "duration": 0},
-                })
+            if "chp_01" not in skip_devices:
+                chp_pwr = s.get("P_chp_kw", 0) * KW
+                if s.get("u_chp", 0) == 1 and chp_pwr > threshold * KW:
+                    commands.append({
+                        "device_id": "chp_01",
+                        "command": {"register": 50, "values": [chp_pwr],
+                                    "mode": 1, "duration": duration},
+                    })
+                else:
+                    commands.append({
+                        "device_id": "chp_01",
+                        "command": {"register": 50, "values": [0],
+                                    "mode": 0, "duration": 0},
+                    })
 
             # 热泵
-            hp_pwr = s.get("P_hp_kw", 0)
-            if hp_pwr > threshold:
-                commands.append({
-                    "device_id": "heatpump_01",
-                    "command": {"register": 50, "values": [hp_pwr],
-                                "mode": 1, "duration": duration},
-                })
-            else:
-                commands.append({
-                    "device_id": "heatpump_01",
-                    "command": {"register": 50, "values": [0],
-                                "mode": 0, "duration": 0},
-                })
+            if "heatpump_01" not in skip_devices:
+                hp_pwr = s.get("P_hp_kw", 0) * KW
+                if hp_pwr > threshold * KW:
+                    commands.append({
+                        "device_id": "heatpump_01",
+                        "command": {"register": 50, "values": [hp_pwr],
+                                    "mode": 1, "duration": duration},
+                    })
+                else:
+                    commands.append({
+                        "device_id": "heatpump_01",
+                        "command": {"register": 50, "values": [0],
+                                    "mode": 0, "duration": 0},
+                    })
 
             # 蓄能罐
-            ts_ch = s.get("Q_ts_ch_kw", 0)
-            ts_dis = s.get("Q_ts_dis_kw", 0)
-            if ts_dis > threshold:
-                commands.append({
-                    "device_id": "thermal_storage_01",
-                    "command": {"register": 50, "values": [ts_dis],
-                                "mode": 2, "duration": duration},
-                })
-            elif ts_ch > threshold:
-                commands.append({
-                    "device_id": "thermal_storage_01",
-                    "command": {"register": 50, "values": [ts_ch],
-                                "mode": 1, "duration": duration},
-                })
-            else:
-                commands.append({
-                    "device_id": "thermal_storage_01",
-                    "command": {"register": 50, "values": [0],
-                                "mode": 0, "duration": 0},
-                })
+            if "thermal_storage_01" not in skip_devices:
+                ts_ch = s.get("Q_ts_ch_kw", 0) * KW
+                ts_dis = s.get("Q_ts_dis_kw", 0) * KW
+                if ts_dis > threshold * KW:
+                    commands.append({
+                        "device_id": "thermal_storage_01",
+                        "command": {"register": 50, "values": [ts_dis],
+                                    "mode": 2, "duration": duration},
+                    })
+                elif ts_ch > threshold * KW:
+                    commands.append({
+                        "device_id": "thermal_storage_01",
+                        "command": {"register": 50, "values": [ts_ch],
+                                    "mode": 1, "duration": duration},
+                    })
+                else:
+                    commands.append({
+                        "device_id": "thermal_storage_01",
+                        "command": {"register": 50, "values": [0],
+                                    "mode": 0, "duration": 0},
+                    })
+
+            if skip_devices:
+                for did in skip_devices:
+                    commands.append({
+                        "device_id": did,
+                        "command": {"register": 50, "values": [0],
+                                    "mode": -1, "duration": 0},
+                        "_manual_override": True,
+                    })
 
         return commands
 
@@ -860,6 +913,8 @@ class MilpOptimizer:
             commands = self.extract_commands(schedule, duration=duration)
 
             for cmd in commands:
+                if cmd.get("_manual_override"):
+                    continue  # 跳过手动覆盖的设备 (不发 Modbus 指令)
                 device_id = cmd["device_id"]
                 try:
                     result = await collector.write_device_command(
@@ -946,6 +1001,70 @@ class MilpOptimizer:
             "has_schedule": self._last_schedule is not None,
             "step_minutes": self.params["_meta"]["step_minutes"],
             "num_steps": self.params["_meta"]["num_steps"],
+        }
+
+    def _log_execution(self, entry: dict, skip_devices: set):
+        """记录一次 MILP 下发的 setpoint。保留最近 96 条 (8h)。"""
+        entry["_overrides"] = list(skip_devices)
+        self._execution_log.append(entry)
+        if len(self._execution_log) > 96:
+            self._execution_log = self._execution_log[-96:]
+
+    def get_execution_log(self, minutes: int = 40) -> dict:
+        """返回最近 N 分钟的 MILP setpoint 日志 + 实际遥测对比。
+        前端用于绘制「过去执行 vs 未来计划」对比图。
+        """
+        now = datetime.now()
+        cutoff = (now - timedelta(minutes=minutes)).isoformat()
+        # 最近 N 分钟的 setpoint 日志
+        recent_log = [e for e in self._execution_log if e["ts"] >= cutoff]
+
+        # 读取实际遥测 (从 collector 缓存获取最近值 + TDengine 查历史)
+        telemetry: dict[str, list] = {}
+        devices_points = [
+            ("battery_pcs_01", "active_power"),
+            ("chp_01", "active_power"),
+            ("pv_inverter_01", "active_power"),
+            ("smart_meter_01", "active_power"),
+            ("heatpump_01", "elec_power"),
+            ("thermal_storage_01", "power"),
+        ]
+        start_ms = int((now - timedelta(minutes=minutes)).timestamp() * 1000)
+        end_ms = int(now.timestamp() * 1000)
+
+        for dev_id, pt in devices_points:
+            try:
+                rows = td_manager.query(f"""
+                    SELECT ts, val FROM {dev_id}_{pt}
+                    WHERE ts >= {start_ms} AND ts <= {end_ms}
+                    ORDER BY ts
+                """)
+                pts = []
+                for row in rows:
+                    t = _to_ts(row.get("ts", 0))
+                    # TDengine 存储原始单位 (W), 转换为 kW 与 setpoint 对齐
+                    val_kw = round(float(row.get("val", 0)) / 1000, 2)
+                    pts.append({
+                        "ts": datetime.fromtimestamp(t / 1000).isoformat(),
+                        "val": val_kw,
+                    })
+                # 降采样到 ~1min 分辨率 (取每 12 个点的均值, 因 5s 采集)
+                if pts:
+                    sampled = []
+                    chunk = max(1, len(pts) // 60)  # ~60 points for 1-min resolution
+                    for i in range(0, len(pts), chunk):
+                        chunk_vals = [p["val"] for p in pts[i:i + chunk]]
+                        sampled.append({
+                            "ts": pts[min(i + chunk // 2, len(pts) - 1)]["ts"],
+                            "val": round(sum(chunk_vals) / len(chunk_vals), 1),
+                        })
+                    telemetry[dev_id] = sampled
+            except Exception:
+                telemetry[dev_id] = []
+
+        return {
+            "setpoints": recent_log,
+            "telemetry": telemetry,
         }
 
     def get_schedule(self) -> list[dict] | None:
