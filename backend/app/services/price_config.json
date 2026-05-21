@@ -1,0 +1,21 @@
+{
+  "_comment": "分时电价配置 — 价格单位: ¥/kWh，时段对应 local_hour (0-23)",
+  "electricity": {
+    "peak": {
+      "hours": [9, 10, 11, 12, 17, 18, 19, 20, 21],
+      "price_import": 1.20,
+      "price_export": 1.00
+    },
+    "flat": {
+      "hours": [7, 8, 13, 14, 15, 16, 22, 23],
+      "price_import": 0.70,
+      "price_export": 0.50
+    },
+    "valley": {
+      "hours": [0, 1, 2, 3, 4, 5, 6],
+      "price_import": 0.30,
+      "price_export": 0.20
+    }
+  },
+  "gas_price": 0.35
+}

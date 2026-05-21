@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     pv_latitude: float = 39.9           # 光伏站纬度
     pv_longitude: float = 116.4         # 光伏站经度
 
+    # MILP 优化引擎
+    milp_interval: int = 300            # MILP 优化间隔 (秒), 默认 5 分钟
+    milp_horizon_hours: int = 24        # 优化时域
+    milp_time_step_minutes: int = 5     # 时间步长 (5 分钟分辨率, 288 步/天)
+    milp_enabled: bool = True           # 是否启用 MILP（可运行时切换）
+    milp_solver_timeout: int = 60       # CBC 求解器超时 (秒), 288 步需 ~15s
+    milp_safety_first: bool = True      # 安全规则优先于 MILP 指令
+
     model_config = {"env_prefix": "IES_", "env_file": ".env"}
 
 

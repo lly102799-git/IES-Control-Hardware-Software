@@ -561,6 +561,49 @@ async def get_alert_stats():
         return {"active": 0, "acked": 0, "resolved": 0}
 
 
+# ── MILP 优化引擎 ──────────────────────────────────────────
+
+from ..services.milp_engine import milp_engine  # noqa: E402
+
+
+@router.get("/milp/status")
+async def get_milp_status():
+    """MILP 引擎运行状态"""
+    return milp_engine.get_status()
+
+
+@router.get("/milp/schedule")
+async def get_milp_schedule():
+    """当前最优调度方案 (96 步)"""
+    schedule = milp_engine.get_schedule()
+    return {"schedule": schedule, "count": len(schedule) if schedule else 0}
+
+
+@router.post("/milp/trigger")
+async def trigger_milp():
+    """手动触发一次优化"""
+    success = await milp_engine.dispatch_once()
+    return {"success": success, "status": milp_engine.get_status()}
+
+
+@router.get("/milp/config")
+async def get_milp_config():
+    """获取价格配置"""
+    return milp_engine.get_price_config()
+
+
+class MilpPriceConfig(BaseModel):
+    electricity: dict
+    gas_price: float = 0.35
+
+
+@router.post("/milp/config")
+async def update_milp_config(config: MilpPriceConfig):
+    """更新价格配置（热加载）"""
+    milp_engine.update_price_config(config.model_dump())
+    return {"ok": True}
+
+
 # ── WebSocket 端点 ────────────────────────────────────────
 
 

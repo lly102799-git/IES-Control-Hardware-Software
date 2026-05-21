@@ -22,6 +22,7 @@ class RuleEngine:
         self.rules: list[dict] = []
         self._running = False
         self._last_triggered: dict[str, float] = {}
+        self.safety_only = False  # MILP 激活时仅评估安全规则 (priority >= 90)
 
     # ── 规则管理 ──────────────────────────────────────────
 
@@ -92,6 +93,9 @@ class RuleEngine:
         now = time.time()
         for rule in self.rules:
             if not rule.get("enabled", True):
+                continue
+            # MILP 激活时仅评估安全规则 (priority >= 90)
+            if self.safety_only and rule.get("priority", 0) < 90:
                 continue
             # 冷却时间检查
             cooldown = rule.get("cooldown_seconds", 0)
