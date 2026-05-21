@@ -48,7 +48,7 @@ class TDEngineManager:
 
     def connect(self):
         """初始化数据库和超级表"""
-        self._exec(f"CREATE DATABASE IF NOT EXISTS {self.db} KEEP 365")
+        self._exec(f"CREATE DATABASE IF NOT EXISTS {self.db} KEEP 90d")
         self._exec(f"""
             CREATE STABLE IF NOT EXISTS {self.db}.telemetry (
                 ts TIMESTAMP,

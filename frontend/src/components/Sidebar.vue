@@ -1,31 +1,39 @@
 <script setup lang="ts">
+import { ref } from "vue";
 import { useRoute } from "vue-router";
 const route = useRoute();
+const collapsed = ref(true);
 </script>
 
 <template>
-  <nav class="sidebar">
+  <!-- 移动端 hamburger -->
+  <button class="hamburger" @click="collapsed = !collapsed" :title="collapsed ? '展开菜单' : '收起菜单'">
+    <span :class="{ open: !collapsed }" />
+  </button>
+
+  <!-- 侧边栏 -->
+  <nav class="sidebar" :class="{ collapsed }">
     <div class="sidebar-logo">IES</div>
     <div class="sidebar-links">
-      <router-link to="/" class="nav-item" :class="{ active: route.path === '/' }">
+      <router-link to="/" class="nav-item" :class="{ active: route.path === '/' }" @click="collapsed = true">
         驾驶舱
       </router-link>
-      <router-link to="/devices" class="nav-item" :class="{ active: route.path.startsWith('/devices') }">
+      <router-link to="/devices" class="nav-item" :class="{ active: route.path.startsWith('/devices') }" @click="collapsed = true">
         设备
       </router-link>
-      <router-link to="/control" class="nav-item" :class="{ active: route.path === '/control' }">
+      <router-link to="/control" class="nav-item" :class="{ active: route.path === '/control' }" @click="collapsed = true">
         控制
       </router-link>
-      <router-link to="/forecast" class="nav-item" :class="{ active: route.path === '/forecast' }">
+      <router-link to="/forecast" class="nav-item" :class="{ active: route.path === '/forecast' }" @click="collapsed = true">
         预测
       </router-link>
-      <router-link to="/alerts" class="nav-item" :class="{ active: route.path === '/alerts' }">
+      <router-link to="/alerts" class="nav-item" :class="{ active: route.path === '/alerts' }" @click="collapsed = true">
         告警
       </router-link>
-      <router-link to="/settings" class="nav-item" :class="{ active: route.path === '/settings' }">
+      <router-link to="/settings" class="nav-item" :class="{ active: route.path === '/settings' }" @click="collapsed = true">
         配置
       </router-link>
-      <router-link to="/reports" class="nav-item" :class="{ active: route.path === '/reports' }">
+      <router-link to="/reports" class="nav-item" :class="{ active: route.path === '/reports' }" @click="collapsed = true">
         报表
       </router-link>
     </div>
@@ -46,6 +54,7 @@ const route = useRoute();
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   z-index: 100;
   padding: 20px 0;
+  transition: transform 0.25s ease;
 }
 .sidebar-logo {
   font-family: 'SF Pro Display', -apple-system, 'Helvetica Neue', sans-serif;
@@ -75,11 +84,61 @@ const route = useRoute();
 .nav-item:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.08);
-  text-decoration: none;
 }
 .nav-item.active {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.14);
   font-weight: 500;
+}
+
+/* ── 响应式 ── */
+.hamburger {
+  display: none;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 200;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: rgba(29,29,31,0.9);
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 6px;
+}
+.hamburger span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: #fff;
+  border-radius: 1px;
+  position: relative;
+  transition: background 0.2s;
+}
+.hamburger span::before, .hamburger span::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 20px;
+  height: 2px;
+  background: #fff;
+  border-radius: 1px;
+  transition: transform 0.25s;
+}
+.hamburger span::before { top: -6px; }
+.hamburger span::after { top: 6px; }
+.hamburger span.open { background: transparent; }
+.hamburger span.open::before { transform: translateY(6px) rotate(45deg); }
+.hamburger span.open::after { transform: translateY(-6px) rotate(-45deg); }
+
+@media (max-width: 1024px) {
+  .hamburger { display: block; }
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    transform: translateX(-100%);
+  }
+  .sidebar:not(.collapsed) { transform: translateX(0); }
 }
 </style>

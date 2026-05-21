@@ -260,3 +260,27 @@ a:hover { text-decoration: underline; }
   .page-header { margin-bottom: 24px; }
   .page-header h1 { font-size: 24px; }
 }
+
+/* ── Pad / 小屏桌面 (1024px) ── */
+@media (max-width: 1024px) {
+  .app-main { padding-left: 0; }
+  .page { padding: 24px 16px; }
+  /* 卡片网格 3列 → 2列 */
+  .el-row { margin-left: -8px !important; margin-right: -8px !important; }
+  .el-col { padding-left: 8px !important; padding-right: 8px !important; }
+  .el-col[class*="span-6"] { max-width: 50% !important; flex: 0 0 50% !important; }
+  .el-col[class*="span-4"] { max-width: 50% !important; flex: 0 0 50% !important; }
+  /* 状态卡片文字缩小 */
+  .stat-value { font-size: 16px !important; }
+  .dispatch-item .d-val { font-size: 16px !important; }
+}
+
+@media (max-width: 640px) {
+  .page { padding: 16px 12px; }
+  .page-header h1 { font-size: 20px; }
+  .page-header p { font-size: 13px; display: none; }
+  /* 单列布局 */
+  .el-col[class*="span-"] { max-width: 100% !important; flex: 0 0 100% !important; }
+  /* 图表高度缩小 */
+  .echarts { height: 220px !important; }
+}
