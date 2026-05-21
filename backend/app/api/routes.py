@@ -307,29 +307,62 @@ from fastapi.responses import Response  # noqa: E402
 from io import StringIO  # noqa: E402
 import csv  # noqa: E402
 
+from ..services import point_table as pt  # noqa: E402
+
 
 @router.get("/report/export")
-async def export_csv(device_id: str, start: str, end: str, point_name: str = "active_power"):
-    """导出设备遥测数据为 CSV 文件"""
+async def export_csv(device_id: str, start: str, end: str):
+    """导出设备全量遥测数据为多列 CSV（最长 31 天）"""
+    # 限制时间范围
+    from datetime import datetime, timedelta, timezone
     try:
-        rows = td_manager.query(f"""
-            SELECT ts, val, quality
-            FROM {device_id}_{point_name}
-            WHERE ts >= '{start}' AND ts <= '{end}'
-            ORDER BY ts
-            LIMIT 50000
-        """)
+        s = datetime.fromisoformat(start)
+        e = datetime.fromisoformat(end)
+        if (e - s).days > 31:
+            start = (e - timedelta(days=31)).isoformat()[:10]
     except Exception:
-        rows = []
+        pass
 
+    # 获取设备所有测点名称
+    dev_cfg = pt.get_device(device_id)
+    point_names = [p["name"] for p in dev_cfg["points"]] if dev_cfg else ["active_power"]
+
+    # 收集每个测点的时序数据，用毫秒时间戳对齐
+    series: dict[str, dict[int, float]] = {}
+    all_ts: set[int] = set()
+    for pn in point_names:
+        series[pn] = {}
+        try:
+            rows = td_manager.query(f"""
+                SELECT ts, val FROM {device_id}_{pn}
+                WHERE ts >= '{start}' AND ts <= '{end}'
+                ORDER BY ts LIMIT 50000
+            """)
+            for r in rows:
+                ts_val = r.get("ts", "")
+                if not ts_val: continue
+                try:
+                    ts_ms = int(datetime.fromisoformat(str(ts_val).replace("Z", "+00:00")).timestamp() * 1000)
+                except Exception:
+                    continue
+                val = round(float(r.get("val", 0)), 2)
+                series[pn][ts_ms] = val
+                all_ts.add(ts_ms)
+        except Exception:
+            pass
+
+    # 按时间排序写入 CSV
+    sorted_ts = sorted(all_ts)
     output = StringIO()
     writer = csv.writer(output)
-    writer.writerow(["timestamp", "value", "quality"])
-    for r in rows:
-        writer.writerow([r.get("ts", ""), r.get("val", ""), r.get("quality", "")])
+    writer.writerow(["timestamp"] + point_names)
+    for ts_ms in sorted_ts:
+        ts_str = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).isoformat()
+        row = [ts_str] + [series[pn].get(ts_ms, 0) for pn in point_names]
+        writer.writerow(row)
 
     csv_content = output.getvalue()
-    filename = f"{device_id}_{point_name}_{start[:10]}_{end[:10]}.csv"
+    filename = f"{device_id}_{start[:10]}_{end[:10]}.csv"
     return Response(
         content=csv_content.encode("utf-8-sig"),
         media_type="text/csv",
@@ -338,55 +371,67 @@ async def export_csv(device_id: str, start: str, end: str, point_name: str = "ac
 
 
 @router.get("/report/daily")
-async def daily_report(device_id: str, date: str):
+async def daily_report(device_id: str, date: str, point_name: str = "active_power"):
     """设备日报：当日汇总统计"""
     try:
         rows = td_manager.query(f"""
             SELECT
                 MIN(val) as min_val, MAX(val) as max_val, AVG(val) as avg_val,
                 SUM(val) as total, COUNT(*) as cnt
-            FROM {device_id}_active_power
+            FROM {device_id}_{point_name}
             WHERE ts >= '{date} 00:00:00' AND ts <= '{date} 23:59:59'
         """)
         stats = rows[0] if rows else {}
-        # 日发电/用电量 (kWh) — 对功率积分
-        energy = round((stats.get("avg_val", 0) or 0) * 24 / 1000, 2)
-        return {
-            "device_id": device_id, "date": date,
+        result = {
+            "device_id": device_id, "date": date, "point_name": point_name,
             "min": round(stats.get("min_val", 0) or 0, 1),
             "max": round(stats.get("max_val", 0) or 0, 1),
             "avg": round(stats.get("avg_val", 0) or 0, 1),
-            "energy_kwh": energy,
             "data_points": stats.get("cnt", 0),
         }
+        if point_name == "active_power":
+            result["energy_kwh"] = round((stats.get("avg_val", 0) or 0) * 24 / 1000, 2)
+        return result
     except Exception as e:
         return {"error": str(e)}
 
 
 @router.get("/report/monthly")
-async def monthly_report(device_id: str, year: int, month: int):
-    """设备月报：按日统计"""
+async def monthly_report(device_id: str, year: int, month: int, point_name: str = "active_power"):
+    """设备月报：逐日统计 (min/max/avg)"""
     start = f"{year}-{month:02d}-01"
     if month == 12:
         end = f"{year+1}-01-01"
     else:
         end = f"{year}-{month+1:02d}-01"
+
+    daily = []
     try:
-        rows = td_manager.query(f"""
-            SELECT
-                AVG(val) as avg_val, MAX(val) as max_val, COUNT(*) as cnt
-            FROM {device_id}_active_power
-            WHERE ts >= '{start}' AND ts < '{end}'
-        """)
-        stats = rows[0] if rows else {}
-        return {
-            "device_id": device_id, "year": year, "month": month,
-            "avg_power_w": round(stats.get("avg_val", 0) or 0, 1),
-            "max_power_w": round(stats.get("max_val", 0) or 0, 1),
-            "data_points": stats.get("cnt", 0),
-        }
+        # TDengine GROUP BY 兼容性问题，使用逐日查询
+        from datetime import datetime as dt, timedelta
+        d = dt.fromisoformat(start)
+        while d.strftime("%Y-%m") == f"{year}-{month:02d}":
+            day_str = d.strftime("%Y-%m-%d")
+            rows = td_manager.query(f"""
+                SELECT MIN(val) as min_val, MAX(val) as max_val, AVG(val) as avg_val, COUNT(*) as cnt
+                FROM {device_id}_{point_name}
+                WHERE ts >= '{day_str} 00:00:00' AND ts <= '{day_str} 23:59:59'
+            """)
+            r = rows[0] if rows else {}
+            cnt = int(r.get("cnt", 0) or 0)
+            if cnt > 0:
+                daily.append({
+                    "date": day_str,
+                    "min": round(float(r.get("min_val", 0) or 0), 1),
+                    "max": round(float(r.get("max_val", 0) or 0), 1),
+                    "avg": round(float(r.get("avg_val", 0) or 0), 1),
+                    "cnt": cnt,
+                })
+            d += timedelta(days=1)
     except Exception as e:
-        return {"error": str(e)}
+        return {"device_id": device_id, "point_name": point_name, "daily": [], "error": str(e)}
+
+    return {"device_id": device_id, "year": year, "month": month, "point_name": point_name, "daily": daily}
 
 
 # ── 驾驶舱 ──────────────────────────────────────────────
