@@ -25,7 +25,7 @@ except ImportError:
     print("pip install paho-mqtt")
     raise
 
-BROKER = "localhost"
+BROKER = os.environ.get("MQTT_BROKER", "localhost")
 PORT = 1883
 
 def local_hour(t: float) -> float:

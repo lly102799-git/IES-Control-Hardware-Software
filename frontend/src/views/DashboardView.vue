@@ -8,8 +8,7 @@ import { CanvasRenderer } from "echarts/renderers";
 
 use([SankeyChart, BarChart, TitleComponent, TooltipComponent, GridComponent, CanvasRenderer]);
 
-const API_BASE = "http://localhost:8000";
-const WS_URL = "ws://localhost:8000/api/ws/realtime";
+import { API_BASE, WS_URL } from "../config";
 
 interface Kpi { pv_power_kw: number; bat_power_kw: number; soc: number; self_use_rate: number; chp_power_kw?: number; chp_heat_kw?: number; hp_power_kw?: number; hp_thermal_kw?: number; ts_power_kw?: number; ts_heat_soc?: number; ts_cool_soc?: number }
 interface FlowLink { source: string; target: string; value: number }

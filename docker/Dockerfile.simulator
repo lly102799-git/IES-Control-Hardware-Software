@@ -1,0 +1,11 @@
+FROM python:3.13-slim
+
+WORKDIR /app
+
+COPY simulator/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY simulator/ .
+
+# 同时启动 Modbus 和 MQTT 两个模拟器
+CMD ["sh", "-c", "python device_simulator.py & python mqtt_simulator.py & wait"]

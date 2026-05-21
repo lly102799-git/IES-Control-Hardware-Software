@@ -6,8 +6,7 @@ import type { Device } from "../types";
 const router = useRouter();
 const devices = ref<Device[]>([]);
 const loading = ref(false);
-const API_BASE = "http://localhost:8000";
-const WS_URL = "ws://localhost:8000/api/ws/realtime";
+import { API_BASE, WS_URL } from "../config";
 const latestData = ref<Record<string, Record<string, number>>>({});
 
 let ws: WebSocket | null = null;

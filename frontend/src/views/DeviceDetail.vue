@@ -11,8 +11,7 @@ use([LineChart, GaugeChart, TitleComponent, TooltipComponent, GridComponent, Leg
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
-const API_BASE = "http://localhost:8000";
-const WS_URL = "ws://localhost:8000/api/ws/realtime";
+import { API_BASE, WS_URL } from "../config";
 const realtime = ref<Record<string, number>>({});
 let ws: WebSocket | null = null;
 

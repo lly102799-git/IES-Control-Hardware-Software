@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
-
-const API_BASE = "http://localhost:8000";
+import { ref, onMounted } from "vue";
+import { API_BASE } from "../config";
 
 interface Alert {
   ts: string;

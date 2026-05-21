@@ -10,13 +10,15 @@ import time
 from datetime import datetime
 from threading import Thread
 
+import os
+
 import paho.mqtt.client as mqtt
 
 from ..core.config import settings
 from ..core.tdengine import td_manager
 from .collector import collector
 
-BROKER = "localhost"
+BROKER = os.environ.get("MQTT_BROKER", "localhost")
 PORT = 1883
 TOPIC = "ies/device/+/telemetry"
 

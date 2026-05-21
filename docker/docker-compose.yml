@@ -1,4 +1,5 @@
 services:
+  # ── 基础设施 ──────────────────────────────────────────
   tdengine:
     image: tdengine/tdengine:3.3.3.0
     container_name: ies-tdengine
@@ -7,9 +8,7 @@ services:
     environment:
       TAOS_FQDN: tdengine
     ports:
-      - "6030:6030"   # REST API
-      - "6041:6041"   # WebSocket
-      - "6030-6035:6030-6035/udp"
+      - "6041:6041"
     volumes:
       - tdengine-data:/var/lib/taos
       - tdengine-log:/var/log/taos
@@ -24,10 +23,79 @@ services:
     container_name: ies-mosquitto
     restart: unless-stopped
     ports:
-      - "1883:1883"   # MQTT
-      - "9001:9001"   # WebSocket MQTT
+      - "1883:1883"
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "hc-$$", "-W", "2"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── 设备模拟器 ────────────────────────────────────────
+  simulator:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.simulator
+    container_name: ies-simulator
+    restart: unless-stopped
+    ports:
+      - "5020:5020"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      - MQTT_BROKER=mosquitto
+    healthcheck:
+      test: ["CMD", "python", "-c", "from pymodbus.client import ModbusTcpClient; c=ModbusTcpClient('127.0.0.1',port=5020); c.connect(); c.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── 后端 ──────────────────────────────────────────────
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: ies-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      tdengine:
+        condition: service_healthy
+      simulator:
+        condition: service_healthy
+    environment:
+      - IES_TD_HOST=tdengine
+      - IES_MODBUS_HOST=simulator
+      - MQTT_BROKER=mosquitto
+      - IES_COLLECT_INTERVAL=5
+      - IES_RULE_ENGINE_INTERVAL=30
+      - IES_FORECAST_INTERVAL=900
+      - IES_MILP_INTERVAL=300
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; r=httpx.get('http://localhost:8000/api/devices',timeout=5); assert r.status_code==200"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ── 前端 ──────────────────────────────────────────────
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        VITE_API_BASE: ""
+    container_name: ies-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   tdengine-data:

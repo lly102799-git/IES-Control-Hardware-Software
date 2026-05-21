@@ -12,7 +12,7 @@ import { CanvasRenderer } from "echarts/renderers";
 use([LineChart, TitleComponent, TooltipComponent, GridComponent,
      LegendComponent, DataZoomComponent, CanvasRenderer]);
 
-const API_BASE = "http://localhost:8000";
+import { API_BASE } from "../config";
 
 const rules = ref<any[]>([]);
 const executions = ref<any[]>([]);

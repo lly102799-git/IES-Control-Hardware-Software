@@ -8,7 +8,7 @@ import { CanvasRenderer } from "echarts/renderers";
 
 use([LineChart, BarChart, CandlestickChart, TitleComponent, TooltipComponent, GridComponent, LegendComponent, DataZoomComponent, CanvasRenderer]);
 
-const API_BASE = "http://localhost:8000";
+import { API_BASE } from "../config";
 
 interface Device { device_id: string; name: string; dev_type: string; }
 const devices = ref<Device[]>([]);
