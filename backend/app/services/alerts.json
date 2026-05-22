@@ -7,7 +7,11 @@
     "op": "lt",
     "threshold": 15,
     "cooldown_seconds": 600,
-    "message": "储能电池 SOC 低于 {value}%，存在过放风险"
+    "message": "储能电池 SOC 低于 {value}%，存在过放风险",
+    "actions": [
+      {"device": "battery_pcs_01", "mode": 3, "power": 0, "duration": 0,
+       "reason": "SOC 过低保护：强制待机，停止放电"}
+    ]
   },
   {
     "name": "储能 SOC 过高",
@@ -17,7 +21,11 @@
     "op": "gt",
     "threshold": 95,
     "cooldown_seconds": 600,
-    "message": "储能电池 SOC 达到 {value}%，接近满充"
+    "message": "储能电池 SOC 达到 {value}%，接近满充",
+    "actions": [
+      {"device": "battery_pcs_01", "mode": 3, "power": 0, "duration": 0,
+       "reason": "SOC 过高保护：强制待机，停止充电"}
+    ]
   },
   {
     "name": "电池温度过高",
@@ -27,7 +35,11 @@
     "op": "gt",
     "threshold": 45,
     "cooldown_seconds": 300,
-    "message": "电池温度 {value}°C，超过 45°C 安全阈值"
+    "message": "电池温度 {value}°C，超过 45°C 安全阈值",
+    "actions": [
+      {"device": "battery_pcs_01", "mode": 3, "power": 0, "duration": 0,
+       "reason": "电池温度过高：强制待机保护"}
+    ]
   },
   {
     "name": "光伏逆变器故障",
@@ -37,7 +49,11 @@
     "op": "eq",
     "threshold": 2,
     "cooldown_seconds": 300,
-    "message": "光伏逆变器状态异常 (status={value})，需立即检查"
+    "message": "光伏逆变器状态异常 (status={value})，需立即检查",
+    "actions": [
+      {"device": "pv_inverter_01", "mode": 1, "power": 0, "duration": 0,
+       "reason": "逆变器故障：强制限功率为 0"}
+    ]
   },
   {
     "name": "储能 PCS 故障",
@@ -47,7 +63,11 @@
     "op": "eq",
     "threshold": 3,
     "cooldown_seconds": 300,
-    "message": "储能 PCS 状态异常 (status={value})，需立即检查"
+    "message": "储能 PCS 状态异常 (status={value})，需立即检查",
+    "actions": [
+      {"device": "battery_pcs_01", "mode": 3, "power": 0, "duration": 0,
+       "reason": "PCS 故障：强制待机保护"}
+    ]
   },
   {
     "name": "光伏组件温度过高",
@@ -57,7 +77,11 @@
     "op": "gt",
     "threshold": 70,
     "cooldown_seconds": 600,
-    "message": "光伏组件温度 {value}°C，超过 70°C，散热需关注"
+    "message": "光伏组件温度 {value}°C，超过 70°C，散热需关注",
+    "actions": [
+      {"device": "pv_inverter_01", "mode": 1, "power": 50000, "duration": 1800,
+       "reason": "组件温度过高：限制光伏出力至 50kW"}
+    ]
   },
   {
     "name": "通信中断",

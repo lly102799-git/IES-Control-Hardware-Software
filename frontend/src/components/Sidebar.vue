@@ -36,6 +36,9 @@ const collapsed = ref(true);
       <router-link to="/reports" class="nav-item" :class="{ active: route.path === '/reports' }" @click="collapsed = true">
         报表
       </router-link>
+      <router-link to="/monitor" class="nav-item" :class="{ active: route.path === '/monitor' }" @click="collapsed = true">
+        监控
+      </router-link>
     </div>
   </nav>
 </template>

@@ -18,6 +18,7 @@ const rules = ref<any[]>([]);
 const executions = ref<any[]>([]);
 const pvForecast = ref<any[]>([]);
 const pvActual = ref<any[]>([]);
+const milpSchedule = ref<any[]>([]);
 const loadingPv = ref(false);
 const loadingRules = ref(false);
 
@@ -27,9 +28,11 @@ async function fetchRules() {
     const [r, e] = await Promise.all([
       fetch(`${API_BASE}/api/rules`).then(r => r.json()),
       fetch(`${API_BASE}/api/rules/executions?limit=20`).then(r => r.json()),
+      fetch(`${API_BASE}/api/milp/schedule`).then(r => r.json()),
     ]);
     rules.value = r.rules || [];
     executions.value = e.executions || [];
+    milpSchedule.value = (r.schedule || []).filter((_: any, i: number) => i % 12 === 0);
   } catch (err) { console.error(err); }
   finally { loadingRules.value = false; }
 }
@@ -43,7 +46,6 @@ async function fetchForecast() {
       power: d.power_kw,
       ghi: d.ghi,
     }));
-    // 获取今日实际发电作为对比
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
     const a = await fetch(
@@ -97,6 +99,30 @@ const pvChartOption = computed(() => ({
   ],
 }));
 
+const milpChartOption = computed(() => ({
+  title: { text: "MILP 最优调度 (24h)", left: "center", textStyle: { fontSize: 14 } },
+  tooltip: { trigger: "axis" },
+  legend: { data: ["电池 SOC", "蓄能 SOC", "电网净功率", "CHP 出力"], bottom: 0, textStyle: { fontSize: 11 } },
+  grid: { top: 50, bottom: 50, left: 60, right: 60 },
+  xAxis: { type: "category", data: milpSchedule.value.map((s: any) => `${(s.minute / 60).toFixed(0)}h`) },
+  yAxis: [
+    { type: "value", name: "SOC %", max: 100 },
+    { type: "value", name: "kW" },
+  ],
+  series: [
+    { name: "电池 SOC", type: "line", data: milpSchedule.value.map((s: any) => +(s.SOC_bat * 100).toFixed(0)),
+      smooth: true, lineStyle: { color: "#0071e3", width: 2 }, areaStyle: { color: "rgba(0,113,227,0.08)" }, symbol: "none" },
+    { name: "蓄能 SOC", type: "line", data: milpSchedule.value.map((s: any) => +(s.SOC_ts * 100).toFixed(0)),
+      smooth: true, lineStyle: { color: "#ff6b35", width: 2 }, areaStyle: { color: "rgba(255,107,53,0.08)" }, symbol: "none" },
+    { name: "电网净功率", type: "line", yAxisIndex: 1,
+      data: milpSchedule.value.map((s: any) => (s.P_grid_import_kw - s.P_grid_export_kw)),
+      smooth: true, lineStyle: { color: "#ff3b30", type: "dashed" }, symbol: "none" },
+    { name: "CHP 出力", type: "line", yAxisIndex: 1,
+      data: milpSchedule.value.map((s: any) => s.P_chp_kw),
+      smooth: true, lineStyle: { color: "#ff9500" }, symbol: "none" },
+  ],
+}));
+
 function formatTime(ts: string) {
   return ts ? new Date(ts).toLocaleTimeString("zh-CN", { hour12: false }) : "-";
 }
@@ -117,6 +143,12 @@ function formatTime(ts: string) {
         </div>
       </template>
       <VChart :option="pvChartOption" style="height: 360px" autoresize />
+    </el-card>
+
+    <!-- MILP 调度总览 -->
+    <el-card shadow="hover" style="margin-bottom: 20px" v-if="milpSchedule.length > 0">
+      <template #header><span>MILP 最优调度 (24h)</span></template>
+      <VChart :option="milpChartOption" style="height: 300px" autoresize />
     </el-card>
 
     <!-- 规则引擎状态 -->

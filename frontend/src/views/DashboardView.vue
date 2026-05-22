@@ -16,6 +16,7 @@ interface FlowLink { source: string; target: string; value: number }
 const kpi = ref<Kpi>({ pv_power_kw: 0, bat_power_kw: 0, soc: 50, self_use_rate: 0 });
 const energyFlow = ref<FlowLink[]>([]);
 const devices = ref<any[]>([]);
+const milpCost = ref<number | null>(null);
 let ws: WebSocket | null = null;
 let refreshTimer: number | null = null;
 
@@ -26,6 +27,11 @@ async function fetchOverview() {
     kpi.value = d.kpi || kpi.value;
     energyFlow.value = d.energy_flow || [];
     devices.value = d.devices || [];
+  } catch {}
+  try {
+    const r = await fetch(`${API_BASE}/api/milp/status`);
+    const d = await r.json();
+    milpCost.value = d.total_cost_yuan ?? null;
   } catch {}
 }
 
@@ -81,6 +87,7 @@ const kpiCards = computed(() => [
   { label: "储能功率", value: (kpi.value.bat_power_kw >= 0 ? "+" : "") + kpi.value.bat_power_kw.toFixed(1), unit: "kW", sub: `SOC ${kpi.value.soc.toFixed(0)}%`, icon: "🔋" },
   { label: "CHP 发电", value: (kpi.value.chp_power_kw || 0).toFixed(1), unit: "kW", icon: "🔥" },
   { label: "热泵供热", value: (kpi.value.hp_thermal_kw || 0).toFixed(1), unit: "kW", icon: "❄️" },
+  { label: "预计成本", value: milpCost.value != null ? milpCost.value.toFixed(0) : "—", unit: "¥/天", icon: "💰" },
 ]);
 </script>
 

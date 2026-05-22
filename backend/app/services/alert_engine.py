@@ -186,6 +186,36 @@ class AlertEngine:
         except Exception:
             return []
 
+    # ── 告警动作执行 ──────────────────────────────────────
+
+    async def _execute_actions(self, alerts: list[dict]):
+        """对每条告警，如果定义了 actions，执行对应的保护动作。"""
+        for alert in alerts:
+            alert_name = alert["alert_name"]
+            # 查找对应的告警规则
+            rule = next((r for r in self.rules if r["name"] == alert_name), None)
+            if not rule:
+                continue
+            actions = rule.get("actions", [])
+            if not actions:
+                continue
+
+            for action in actions:
+                device_id = action["device"]
+                reason = action.get("reason", alert_name)
+                cmd = {
+                    "register": 50,
+                    "values": [action.get("power", 0)],
+                    "mode": action.get("mode", 0),
+                    "duration": action.get("duration", 0),
+                }
+                try:
+                    result = await collector.write_device_command(device_id, cmd)
+                    status = "OK" if result["success"] else f"FAIL: {result['message']}"
+                    print(f"[AlertEngine] 动作: {device_id} → {reason} ({status})")
+                except Exception as e:
+                    print(f"[AlertEngine] 动作执行失败: {device_id}: {e}")
+
     # ── 调度循环 ──────────────────────────────────────────
 
     async def run_loop(self):
@@ -201,6 +231,8 @@ class AlertEngine:
                 if alerts:
                     names = [a["alert_name"] for a in alerts]
                     print(f"[AlertEngine] 产生告警: {names}")
+                    # 执行保护动作
+                    await self._execute_actions(alerts)
             except Exception as e:
                 print(f"[AlertEngine] 异常: {e}")
             await asyncio.sleep(interval)
